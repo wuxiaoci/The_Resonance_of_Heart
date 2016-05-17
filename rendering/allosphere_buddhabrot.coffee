@@ -1,43 +1,19 @@
 allofw = require "allofw"
-zmq = require "zmq"
-msgpack = require "msgpack"
-
-parameters = {
-    "phase": 0,
-    "distance1": 0,
-    "distance2": 0,
-    "distance3": 0,
-    "distance4": 0
-}
-
-zmq_sub = zmq.socket("sub")
-zmq_sub.connect("tcp://192.168.1.109:60070") ## The IP address where leap_server.py is run, and the port.
-zmq_sub.subscribe("")
-zmq_sub.on("message", (buffer) ->
-    state = msgpack.unpack(buffer)
-    distance = (a, b) -> Math.sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]))
-    subtract = (a, b) -> [ a[0] - b[0], a[1] - b[1], a[2] - b[2] ]
-    parameters['distance1'] = distance(state.left.thumb_distal, state.left.index_distal) / 100
-    parameters['distance2'] = distance(state.right.thumb_distal, state.right.index_distal) / 100
-
-    # rotation1 = Math.atan2(state.left.normal[1], -state.left.normal[0])
-    # parameters['rotation1'] = rotation1
-    # rotation2 = Math.atan2(state.left.normal[1], -state.left.normal[2])
-    # parameters['rotation2'] = rotation2
-    rotation3 = Math.atan2(state.right.normal[1], -state.right.normal[0])
-    parameters['rotation3'] = rotation3
-    rotation4 = Math.atan2(state.right.normal[1], -state.right.normal[2])
-    parameters['rotation4'] = rotation4
-)
 
 GL = allofw.GL3
-graphics = allofw.graphics
+graphics = allofw.graphics;
 
-w = new allofw.OpenGLWindow({ title: "Buddhabrot Renderer", width: 1024, height: 1024 })
-w.makeContextCurrent()
+w = new allofw.OpenGLWindow({ title: "Buddhabrot Renderer", width: 1024, height: 1024 });
+w.makeContextCurrent();
+
+ps = require "node_phasespace"
+
+ps.start()
+
 
 vertex_shader = """
     #version 330
+    uniform float rotation;
     layout(location = 0) in vec4 sample;
     out vec2 cs;
     out vec2 z0s;
@@ -53,12 +29,6 @@ geometry_shader = """
     layout(points, max_vertices = 256) out;
 
     uniform float phase = 0;
-    uniform float rotation1 = 0;
-    uniform float rotation2 = 0;
-    uniform float rotation3 = 0;
-    uniform float rotation4 = 0;
-    uniform float distance1 = 0;
-    uniform float distance2 = 0;
 
     const int max_iteration = 256;
 
@@ -70,10 +40,10 @@ geometry_shader = """
         vec2 z0 = z0s[0];
 
         // Addons (each line one):
-        z0.x += sin(distance2 * c.y);
+        // z0.x += sin(phase);
         // z0.y += sin(phase);
-        // c.x += (distance2 - 0.5) * 0.1;
-        c.y += (distance1 - 0.5) * 0.1;
+        // c.x += sin(phase);
+        c.y += sin(phase);
         // z0.y += sin(phase+c.y*2);
 
         // z0.x = sin(c.x * 10 + phase);
@@ -84,24 +54,13 @@ geometry_shader = """
         // vec4 e2 = vec4(0, 1, 0, 0) / 2;
 
         // Rotation 1 (Horizontal)
-        mat4 m_23 = mat4(
-            vec4(1, 0, 0, 0),
-            vec4(0, cos(rotation3), -sin(rotation3), 0),
-            vec4(0, sin(rotation3),  cos(rotation3), 0),
-            vec4(0, 0, 0, 1)
-        );
+        vec4 e1 = vec4(cos(phase / 3), 0, 0, sin(phase / 3)) / 2;
+        vec4 e2 = vec4(0, cos(phase / 3), sin(phase / 3), 0) / 2;
 
-        mat4 m_14 = mat4(
-            vec4(cos(rotation4), 0, 0, -sin(rotation4)),
-            vec4(0, 1, 0, 0),
-            vec4(0, 0, 1, 0),
-            vec4(sin(rotation4), 0, 0, cos(rotation4))
-        );
-
-        mat4 m_combined = m_23 * m_14;
-
-        vec4 e1 = m_combined[0] / 2;
-        vec4 e2 = m_combined[1] / 2;
+        // Rotation 2 (Vertical)
+        // vec4 e1 = vec4(cos(phase / 3), 0, sin(phase / 3), 0) / 2;
+        // vec4 e2 = vec4(0, cos(phase / 3), 0, sin(phase / 3)) / 2;
+        // also can change the 3 in sin() to 1.
 
         vec4 cz = vec4(0, 0, 0, 0);
         cz.zw = c;
@@ -155,7 +114,7 @@ composite_fragment_shader = """
     void main() {
         vec4 counter = texture(texCounter, tex_coord);
         float v = counter.r / max_counter;
-        float p = 1 - 1 / (1 + v);
+        float p = 1 - exp(-v);
         fragment_output = texture(texColormap, vec2(p, 0.5));
     }
 """
@@ -222,7 +181,7 @@ setupBuffers = () ->
     buffer = require("fs").readFileSync("data.bin")
     @vertices = buffer.length / 4 / 4
     vertices /= 2
-    vertices /= 32
+    vertices /= 8
 
     console.log("Number of vertices:", vertices)
 
@@ -297,6 +256,8 @@ t0 = new Date().getTime()
 render_fractal = () ->
 
     phase = (new Date().getTime() - t0) / 5000
+    markers = ps.getMarkers(0, 1)
+    phase = markers[0][1]
 
     GL.disable(GL.DEPTH_TEST)
     GL.depthMask(GL.FALSE)
@@ -307,12 +268,6 @@ render_fractal = () ->
     GL.enable(GL.BLEND);
     GL.blendFunc(GL.ONE, GL.ONE);
     GL.useProgram(program)
-    GL.uniform1f(GL.getUniformLocation(program, "distance1"), parameters['distance1'])
-    GL.uniform1f(GL.getUniformLocation(program, "distance2"), parameters['distance2'])
-    GL.uniform1f(GL.getUniformLocation(program, "rotation1"), parameters['rotation1'])
-    GL.uniform1f(GL.getUniformLocation(program, "rotation2"), parameters['rotation2'])
-    GL.uniform1f(GL.getUniformLocation(program, "rotation3"), parameters['rotation3'])
-    GL.uniform1f(GL.getUniformLocation(program, "rotation4"), parameters['rotation4'])
     GL.uniform1f(GL.getUniformLocation(program, "phase"), phase)
     GL.bindVertexArray(vertex_array)
     GL.pointSize(point_size);
@@ -339,7 +294,7 @@ render = () ->
     GL.useProgram(program_composite)
 
     pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
-    GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 2000 * pixel_size * vertices / 1000000)
+    GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 1000 * pixel_size * vertices / 1000000)
     if sz[0] < sz[1]
         y_scale = sz[0] / sz[1]
         x_scale = 1
@@ -391,3 +346,5 @@ setInterval (() ->
 
 w.onClose () ->
     clearInterval(timer)
+
+

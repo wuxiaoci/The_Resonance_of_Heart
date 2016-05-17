@@ -9,7 +9,7 @@ parameters = {
 }
 
 zmq_sub = zmq.socket("sub")
-zmq_sub.connect("tcp://127.0.0.1:62000")
+zmq_sub.connect("tcp://192.168.1.109:60070")
 zmq_sub.subscribe("")
 zmq_sub.on("message", (buffer) ->
     state = msgpack.unpack(buffer)
@@ -39,8 +39,8 @@ zmq_sub.on("message", (buffer) ->
         parameters['x_diff'] = 1
 
     parameters['angle'] = parameters['angle'] * 0.95 + target_angle * 0.05
-
-    console.log parameters['angle']
+    console.log(parameters)
+    # console.log parameters['angle']
 )
 
 GL = allofw.GL3
@@ -85,7 +85,7 @@ geometry_shader = """
         // z0.x += sin(distance2 * c.y);
         // z0.y += sin(phase);
         // c.x += (distance2 - 0.5) * 0.1;
-        // c.y += x_center * 0.1;
+        c.y += x_center * 0.1;
         // z0.y += sin(phase+c.y*2);
 
         // z0.x = sin(c.x * 10 + phase);
@@ -387,5 +387,3 @@ setInterval (() ->
 
 w.onClose () ->
     clearInterval(timer)
-
-

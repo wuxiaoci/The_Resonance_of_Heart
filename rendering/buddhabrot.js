@@ -18,7 +18,7 @@
 
   zmq_sub = zmq.socket("sub");
 
-  zmq_sub.connect("tcp://127.0.0.1:62000");
+  zmq_sub.connect("tcp://192.168.1.109:60070");
 
   zmq_sub.subscribe("");
 

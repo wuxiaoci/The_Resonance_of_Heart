@@ -3,37 +3,72 @@ zmq = require "zmq"
 msgpack = require "msgpack"
 
 parameters = {
-    "phase": 0,
-    "distance1": 0,
-    "distance2": 0,
-    "distance3": 0,
-    "distance4": 0
+    theta_xy: 0,
+    theta_yz: 0,
+    theta_zx: 0,
+    theta_xw: 0,
+    theta_yw: 0,
+    theta_zw: 0,
+    x_center: 0,
+    x_diff: 0
 }
 
 zmq_sub = zmq.socket("sub")
-zmq_sub.connect("tcp://192.168.1.109:60070") ## The IP address where leap_server.py is run, and the port.
+zmq_sub.connect("tcp://192.168.0.187:62000")
 zmq_sub.subscribe("")
 zmq_sub.on("message", (buffer) ->
     state = msgpack.unpack(buffer)
     distance = (a, b) -> Math.sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]))
     subtract = (a, b) -> [ a[0] - b[0], a[1] - b[1], a[2] - b[2] ]
-    parameters['distance1'] = distance(state.left.thumb_distal, state.left.index_distal) / 100
-    parameters['distance2'] = distance(state.right.thumb_distal, state.right.index_distal) / 100
+    parameters['x_center'] = (state.left.position[0] + state.right.position[0]) / 200
 
-    # rotation1 = Math.atan2(state.left.normal[1], -state.left.normal[0])
-    # parameters['rotation1'] = rotation1
-    # rotation2 = Math.atan2(state.left.normal[1], -state.left.normal[2])
-    # parameters['rotation2'] = rotation2
-    rotation3 = Math.atan2(state.right.normal[1], -state.right.normal[0])
-    parameters['rotation3'] = rotation3
-    rotation4 = Math.atan2(state.right.normal[1], -state.right.normal[2])
-    parameters['rotation4'] = rotation4
+    v1x = state.left.normal[0]
+    v1y = state.left.normal[1]
+    v1z = state.left.normal[2]
+    v1l = Math.sqrt(v1x * v1x + v1y * v1y + v1z * v1z) + 1e-10
+    v1x /= v1l
+    v1y /= v1l
+    v1z /= v1l
+
+    v2x = state.right.normal[0]
+    v2y = state.right.normal[1]
+    v2z = state.right.normal[2]
+    v2l = Math.sqrt(v2x * v2x + v2y * v2y + v2z * v2z) + 1e-10
+    v2x /= v2l
+    v2y /= v2l
+    v2z /= v2l
+
+    vnx = state.left.position[0] - state.right.position[0]
+    vny = state.left.position[1] - state.right.position[1]
+    vnz = state.left.position[2] - state.right.position[2]
+    vnl = Math.sqrt(vnx * vnx + vny * vny + vnz * vnz) + 1e-10
+    vnx /= vnl
+    vny /= vnl
+    vnz /= vnl
+
+    angle = v1x * v2x + v1y * v2y + v1z * v2z
+    angle2 = -(Math.atan2(vnx, vnz) + Math.PI / 2) * 2;
+    angle3 = -(Math.atan2(vnx, vny) + Math.PI / 2) * 2;
+    x_diff = distance(state.left.position, state.right.position) / 200
+    if state.left.seen || state.right.seen
+        target_angle = angle * 2
+        target_angle2 = angle2
+        target_angle3 = angle3
+        target_xdiff = x_diff
+    else
+        target_angle = 0
+        target_angle2 = 0
+        target_angle3 = 0
+        target_xdiff = 1
+
+    parameters['theta_xy'] = parameters['theta_xy'] * 0.95 + target_angle * 0.05
+    parameters['x_diff'] = parameters['x_diff'] * 0.95 + target_xdiff * 0.05
 )
 
 GL = allofw.GL3
 graphics = allofw.graphics
 
-w = new allofw.OpenGLWindow({ title: "Buddhabrot Renderer", width: 1024, height: 1024 })
+w = new allofw.OpenGLWindow({ title: "Buddhabrot Renderer", width: 1024, height: 1024, fullscreen: true })
 w.makeContextCurrent()
 
 vertex_shader = """
@@ -52,13 +87,15 @@ geometry_shader = """
     layout(points) in;
     layout(points, max_vertices = 256) out;
 
-    uniform float phase = 0;
-    uniform float rotation1 = 0;
-    uniform float rotation2 = 0;
-    uniform float rotation3 = 0;
-    uniform float rotation4 = 0;
-    uniform float distance1 = 0;
-    uniform float distance2 = 0;
+    uniform float time      = 0;
+    uniform float theta_xy     = 0;
+    uniform float theta_yz     = 0;
+    uniform float theta_zx     = 0;
+    uniform float theta_xw     = 0;
+    uniform float theta_yw     = 0;
+    uniform float theta_zw     = 0;
+    uniform float x_center  = 0;
+    uniform float x_diff    = 0;
 
     const int max_iteration = 256;
 
@@ -69,11 +106,13 @@ geometry_shader = """
         vec2 c = cs[0];
         vec2 z0 = z0s[0];
 
+        float scale = x_diff;
+
         // Addons (each line one):
-        z0.x += sin(distance2 * c.y);
+        // z0.x += sin(distance2 * c.y);
         // z0.y += sin(phase);
         // c.x += (distance2 - 0.5) * 0.1;
-        c.y += (distance1 - 0.5) * 0.1;
+        // c.y += x_center * 0.1;
         // z0.y += sin(phase+c.y*2);
 
         // z0.x = sin(c.x * 10 + phase);
@@ -83,25 +122,18 @@ geometry_shader = """
         // vec4 e1 = vec4(1, 0, 0, 0) / 2;
         // vec4 e2 = vec4(0, 1, 0, 0) / 2;
 
-        // Rotation 1 (Horizontal)
-        mat4 m_23 = mat4(
-            vec4(1, 0, 0, 0),
-            vec4(0, cos(rotation3), -sin(rotation3), 0),
-            vec4(0, sin(rotation3),  cos(rotation3), 0),
-            vec4(0, 0, 0, 1)
-        );
+mat4 m_xy = mat4(
+    vec4(cos(theta_xy), 0, sin(theta_xy), 0),
+    vec4(0, cos(theta_xy), 0, sin(theta_xy)),
+    vec4(0, 0, 1, 0),
+    vec4(0, 0, 0, 1)
+);
 
-        mat4 m_14 = mat4(
-            vec4(cos(rotation4), 0, 0, -sin(rotation4)),
-            vec4(0, 1, 0, 0),
-            vec4(0, 0, 1, 0),
-            vec4(sin(rotation4), 0, 0, cos(rotation4))
-        );
 
-        mat4 m_combined = m_23 * m_14;
+mat4 mat = m_xy;
 
-        vec4 e1 = m_combined[0] / 2;
-        vec4 e2 = m_combined[1] / 2;
+vec4 e1 = mat[0] / 2 * scale;
+vec4 e2 = mat[1] / 2 * scale;
 
         vec4 cz = vec4(0, 0, 0, 0);
         cz.zw = c;
@@ -222,7 +254,7 @@ setupBuffers = () ->
     buffer = require("fs").readFileSync("data.bin")
     @vertices = buffer.length / 4 / 4
     vertices /= 2
-    vertices /= 32
+    vertices /= 4
 
     console.log("Number of vertices:", vertices)
 
@@ -295,8 +327,8 @@ setupRender = () ->
 t0 = new Date().getTime()
 
 render_fractal = () ->
-
-    phase = (new Date().getTime() - t0) / 5000
+    time = (new Date().getTime() - t0) / 2000
+    parameters['time'] = time
 
     GL.disable(GL.DEPTH_TEST)
     GL.depthMask(GL.FALSE)
@@ -307,13 +339,10 @@ render_fractal = () ->
     GL.enable(GL.BLEND);
     GL.blendFunc(GL.ONE, GL.ONE);
     GL.useProgram(program)
-    GL.uniform1f(GL.getUniformLocation(program, "distance1"), parameters['distance1'])
-    GL.uniform1f(GL.getUniformLocation(program, "distance2"), parameters['distance2'])
-    GL.uniform1f(GL.getUniformLocation(program, "rotation1"), parameters['rotation1'])
-    GL.uniform1f(GL.getUniformLocation(program, "rotation2"), parameters['rotation2'])
-    GL.uniform1f(GL.getUniformLocation(program, "rotation3"), parameters['rotation3'])
-    GL.uniform1f(GL.getUniformLocation(program, "rotation4"), parameters['rotation4'])
-    GL.uniform1f(GL.getUniformLocation(program, "phase"), phase)
+
+    for key of parameters
+        GL.uniform1f(GL.getUniformLocation(program, key), parameters[key])
+
     GL.bindVertexArray(vertex_array)
     GL.pointSize(point_size);
     GL.uniform1f(GL.getUniformLocation(program, "scaler"), 1)
@@ -335,11 +364,14 @@ render = () ->
     n = 1
 
     sz = w.getFramebufferSize()
-    GL.viewport(0, 0, sz[0], sz[1])
+    sz[0] /= 2
+    sz[1] /= 2
+    GL.clear(GL.COLOR_BUFFER_BIT)
+    GL.viewport(0, sz[1], sz[0], sz[1])
     GL.useProgram(program_composite)
 
     pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
-    GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 2000 * pixel_size * vertices / 1000000)
+    GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 70 * pixel_size * vertices / 1000000)
     if sz[0] < sz[1]
         y_scale = sz[0] / sz[1]
         x_scale = 1
@@ -349,7 +381,36 @@ render = () ->
     GL.uniform1f(GL.getUniformLocation(program_composite, "y_scale"), y_scale)
     GL.uniform1f(GL.getUniformLocation(program_composite, "x_scale"), x_scale)
     GL.disable(GL.BLEND)
-    GL.clear(GL.COLOR_BUFFER_BIT)
+
+    GL.bindVertexArray(quad_array)
+    GL.activeTexture(GL.TEXTURE0)
+    GL.bindTexture(GL.TEXTURE_2D, framebuffer_texture)
+    colormap_image.bindTexture(1)
+    GL.activeTexture(GL.TEXTURE1)
+    GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
+    GL.drawArrays(GL.TRIANGLE_STRIP, 0, 4)
+    colormap_image.unbindTexture(1)
+    GL.activeTexture(GL.TEXTURE0)
+    GL.bindTexture(GL.TEXTURE_2D, 0)
+    GL.bindVertexArray(0)
+    GL.useProgram(0)
+
+
+    GL.viewport(sz[0], sz[1], sz[0], sz[1])
+    GL.useProgram(program_composite)
+
+    pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
+    GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 70 * pixel_size * vertices / 1000000)
+    if sz[0] < sz[1]
+        y_scale = sz[0] / sz[1]
+        x_scale = 1
+    else
+        x_scale = sz[1] / sz[0]
+        y_scale = 1
+    GL.uniform1f(GL.getUniformLocation(program_composite, "y_scale"), y_scale)
+    GL.uniform1f(GL.getUniformLocation(program_composite, "x_scale"), x_scale)
+    GL.disable(GL.BLEND)
+
     GL.bindVertexArray(quad_array)
     GL.activeTexture(GL.TEXTURE0)
     GL.bindTexture(GL.TEXTURE_2D, framebuffer_texture)
@@ -391,3 +452,5 @@ setInterval (() ->
 
 w.onClose () ->
     clearInterval(timer)
+
+
