@@ -1,0 +1,8 @@
+#!/bin/bash
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+export DYLD_LIBRARY_PATH=$SCRIPT_DIR/lib:$DYLD_LIBRARY_PATH
+export DYLD_FALLBACK_LIBRARY_PATH=$DYLD_LIBRARY_PATH
+
+export NODE_PATH=$SCRIPT_DIR/lib:$NODE_PATH

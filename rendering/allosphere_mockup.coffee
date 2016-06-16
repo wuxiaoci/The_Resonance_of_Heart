@@ -14,7 +14,7 @@ parameters = {
 }
 
 zmq_sub = zmq.socket("sub")
-zmq_sub.connect("tcp://192.168.0.187:62000")
+zmq_sub.connect("tcp://192.168.1.107:60070")
 zmq_sub.subscribe("")
 zmq_sub.on("message", (buffer) ->
     state = msgpack.unpack(buffer)
@@ -50,7 +50,7 @@ zmq_sub.on("message", (buffer) ->
     angle2 = -(Math.atan2(vnx, vnz) + Math.PI / 2) * 2;
     angle3 = -(Math.atan2(vnx, vny) + Math.PI / 2) * 2;
     x_diff = distance(state.left.position, state.right.position) / 200
-    if state.left.seen || state.right.seen
+    if state.left.seen || state.right.seen || true
         target_angle = angle * 2
         target_angle2 = angle2
         target_angle3 = angle3
@@ -63,12 +63,14 @@ zmq_sub.on("message", (buffer) ->
 
     parameters['theta_xy'] = parameters['theta_xy'] * 0.95 + target_angle * 0.05
     parameters['x_diff'] = parameters['x_diff'] * 0.95 + target_xdiff * 0.05
+
+    console.log(parameters)
 )
 
 GL = allofw.GL3
 graphics = allofw.graphics
 
-w = new allofw.OpenGLWindow({ title: "Buddhabrot Renderer", width: 1024, height: 1024, fullscreen: true })
+w = new allofw.OpenGLWindow({ title: "Buddhabrot Renderer", width: 800, height: 600, fullscreen: false })
 w.makeContextCurrent()
 
 vertex_shader = """
@@ -254,7 +256,7 @@ setupBuffers = () ->
     buffer = require("fs").readFileSync("data.bin")
     @vertices = buffer.length / 4 / 4
     vertices /= 2
-    vertices /= 4
+    vertices /= 64
 
     console.log("Number of vertices:", vertices)
 
@@ -364,10 +366,10 @@ render = () ->
     n = 1
 
     sz = w.getFramebufferSize()
-    sz[0] /= 2
-    sz[1] /= 2
+    # sz[0] /= 2
+    # sz[1] /= 2
     GL.clear(GL.COLOR_BUFFER_BIT)
-    GL.viewport(0, sz[1], sz[0], sz[1])
+    GL.viewport(0, 0, sz[0], sz[1])
     GL.useProgram(program_composite)
 
     pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
@@ -396,33 +398,33 @@ render = () ->
     GL.useProgram(0)
 
 
-    GL.viewport(sz[0], sz[1], sz[0], sz[1])
-    GL.useProgram(program_composite)
+    # GL.viewport(sz[0], sz[1], sz[0], sz[1])
+    # GL.useProgram(program_composite)
 
-    pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
-    GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 70 * pixel_size * vertices / 1000000)
-    if sz[0] < sz[1]
-        y_scale = sz[0] / sz[1]
-        x_scale = 1
-    else
-        x_scale = sz[1] / sz[0]
-        y_scale = 1
-    GL.uniform1f(GL.getUniformLocation(program_composite, "y_scale"), y_scale)
-    GL.uniform1f(GL.getUniformLocation(program_composite, "x_scale"), x_scale)
-    GL.disable(GL.BLEND)
+    # pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
+    # GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 70 * pixel_size * vertices / 1000000)
+    # if sz[0] < sz[1]
+    #     y_scale = sz[0] / sz[1]
+    #     x_scale = 1
+    # else
+    #     x_scale = sz[1] / sz[0]
+    #     y_scale = 1
+    # GL.uniform1f(GL.getUniformLocation(program_composite, "y_scale"), y_scale)
+    # GL.uniform1f(GL.getUniformLocation(program_composite, "x_scale"), x_scale)
+    # GL.disable(GL.BLEND)
 
-    GL.bindVertexArray(quad_array)
-    GL.activeTexture(GL.TEXTURE0)
-    GL.bindTexture(GL.TEXTURE_2D, framebuffer_texture)
-    colormap_image.bindTexture(1)
-    GL.activeTexture(GL.TEXTURE1)
-    GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
-    GL.drawArrays(GL.TRIANGLE_STRIP, 0, 4)
-    colormap_image.unbindTexture(1)
-    GL.activeTexture(GL.TEXTURE0)
-    GL.bindTexture(GL.TEXTURE_2D, 0)
-    GL.bindVertexArray(0)
-    GL.useProgram(0)
+    # GL.bindVertexArray(quad_array)
+    # GL.activeTexture(GL.TEXTURE0)
+    # GL.bindTexture(GL.TEXTURE_2D, framebuffer_texture)
+    # colormap_image.bindTexture(1)
+    # GL.activeTexture(GL.TEXTURE1)
+    # GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
+    # GL.drawArrays(GL.TRIANGLE_STRIP, 0, 4)
+    # colormap_image.unbindTexture(1)
+    # GL.activeTexture(GL.TEXTURE0)
+    # GL.bindTexture(GL.TEXTURE_2D, 0)
+    # GL.bindVertexArray(0)
+    # GL.useProgram(0)
 
     err = GL.getError()
     if err != 0

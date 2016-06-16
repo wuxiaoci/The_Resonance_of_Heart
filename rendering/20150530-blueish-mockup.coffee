@@ -10,11 +10,12 @@ parameters = {
     theta_yw: 0,
     theta_zw: 0,
     x_center: 0,
-    x_diff: 0
+    x_diff: 0,
+    color_phase: 0.5
 }
 
 zmq_sub = zmq.socket("sub")
-zmq_sub.connect("tcp://192.168.0.187:62000")
+zmq_sub.connect("tcp://192.168.1.107:60070")
 zmq_sub.subscribe("")
 zmq_sub.on("message", (buffer) ->
     state = msgpack.unpack(buffer)
@@ -61,6 +62,7 @@ zmq_sub.on("message", (buffer) ->
         target_angle3 = 0
         target_xdiff = 1
 
+    parameters['color_phase'] = Math.sin(new Date().getTime() / 1000) * 0.5 + 0.5
     parameters['theta_xw'] = parameters['theta_xw'] * 0.95 + target_angle * 0.05
     parameters['theta_yw'] = parameters['theta_yw'] * 0.95 + target_angle2 * 0.05
     parameters['theta_zw'] = parameters['theta_zw'] * 0.95 + target_angle3 * 0.05
@@ -213,13 +215,14 @@ composite_fragment_shader = """
     uniform sampler2D texCounter;
     uniform sampler2D texColormap;
     uniform float max_counter;
+    uniform float color_phase;
     in vec2 tex_coord;
     layout(location = 0) out vec4 fragment_output;
     void main() {
         vec4 counter = texture(texCounter, tex_coord);
         float v = counter.r / max_counter;
         float p = 1 - 1 / (1 + v);
-        fragment_output = texture(texColormap, vec2(p, 0.5));
+        fragment_output = texture(texColormap, vec2(p, color_phase));
     }
 """
 
@@ -285,7 +288,7 @@ setupBuffers = () ->
     buffer = require("fs").readFileSync("data.bin")
     @vertices = buffer.length / 4 / 4
     vertices /= 2
-    vertices /= 4
+    vertices /= 8
 
     console.log("Number of vertices:", vertices)
 
@@ -342,7 +345,7 @@ setupBuffers = () ->
     GL.bindBuffer(GL.ARRAY_BUFFER, 0)
     GL.bindVertexArray(0)
 
-    @colormap_image = graphics.loadImageData(require("fs").readFileSync(__dirname + "/gradient.png"));
+    @colormap_image = graphics.loadImageData(require("fs").readFileSync(__dirname + "/gradient_2d.png"));
     colormap_image.uploadTexture()
 
 
@@ -395,10 +398,8 @@ render = () ->
     n = 1
 
     sz = w.getFramebufferSize()
-    sz[0] /= 2
-    sz[1] /= 2
     GL.clear(GL.COLOR_BUFFER_BIT)
-    GL.viewport(0, sz[1], sz[0], sz[1])
+    GL.viewport(0, 0, sz[0], sz[1])
     GL.useProgram(program_composite)
 
     pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
@@ -411,6 +412,7 @@ render = () ->
         y_scale = 1
     GL.uniform1f(GL.getUniformLocation(program_composite, "y_scale"), y_scale)
     GL.uniform1f(GL.getUniformLocation(program_composite, "x_scale"), x_scale)
+    GL.uniform1f(GL.getUniformLocation(program_composite, "color_phase"), parameters["color_phase"])
     GL.disable(GL.BLEND)
 
     GL.bindVertexArray(quad_array)
@@ -427,33 +429,33 @@ render = () ->
     GL.useProgram(0)
 
 
-    GL.viewport(sz[0], sz[1], sz[0], sz[1])
-    GL.useProgram(program_composite)
+    # GL.viewport(sz[0], sz[1], sz[0], sz[1])
+    # GL.useProgram(program_composite)
 
-    pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
-    GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 70 * pixel_size * vertices / 1000000)
-    if sz[0] < sz[1]
-        y_scale = sz[0] / sz[1]
-        x_scale = 1
-    else
-        x_scale = sz[1] / sz[0]
-        y_scale = 1
-    GL.uniform1f(GL.getUniformLocation(program_composite, "y_scale"), y_scale)
-    GL.uniform1f(GL.getUniformLocation(program_composite, "x_scale"), x_scale)
-    GL.disable(GL.BLEND)
+    # pixel_size = 1024 * 1024 * (point_size * point_size) / (framebuffer_size * framebuffer_size)
+    # GL.uniform1f(GL.getUniformLocation(program_composite, "max_counter"), 70 * pixel_size * vertices / 1000000)
+    # if sz[0] < sz[1]
+    #     y_scale = sz[0] / sz[1]
+    #     x_scale = 1
+    # else
+    #     x_scale = sz[1] / sz[0]
+    #     y_scale = 1
+    # GL.uniform1f(GL.getUniformLocation(program_composite, "y_scale"), y_scale)
+    # GL.uniform1f(GL.getUniformLocation(program_composite, "x_scale"), x_scale)
+    # GL.disable(GL.BLEND)
 
-    GL.bindVertexArray(quad_array)
-    GL.activeTexture(GL.TEXTURE0)
-    GL.bindTexture(GL.TEXTURE_2D, framebuffer_texture)
-    colormap_image.bindTexture(1)
-    GL.activeTexture(GL.TEXTURE1)
-    GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
-    GL.drawArrays(GL.TRIANGLE_STRIP, 0, 4)
-    colormap_image.unbindTexture(1)
-    GL.activeTexture(GL.TEXTURE0)
-    GL.bindTexture(GL.TEXTURE_2D, 0)
-    GL.bindVertexArray(0)
-    GL.useProgram(0)
+    # GL.bindVertexArray(quad_array)
+    # GL.activeTexture(GL.TEXTURE0)
+    # GL.bindTexture(GL.TEXTURE_2D, framebuffer_texture)
+    # colormap_image.bindTexture(1)
+    # GL.activeTexture(GL.TEXTURE1)
+    # GL.texParameteri(GL.TEXTURE_2D, GL.TEXTURE_WRAP_S, GL.CLAMP_TO_EDGE);
+    # GL.drawArrays(GL.TRIANGLE_STRIP, 0, 4)
+    # colormap_image.unbindTexture(1)
+    # GL.activeTexture(GL.TEXTURE0)
+    # GL.bindTexture(GL.TEXTURE_2D, 0)
+    # GL.bindVertexArray(0)
+    # GL.useProgram(0)
 
     err = GL.getError()
     if err != 0
