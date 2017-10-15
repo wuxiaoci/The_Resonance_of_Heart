@@ -17,10 +17,10 @@ void main() {
 let geometry_shader = `
 #version 330
 
-const int max_iteration = 4;
+const int max_iteration = 16;
 
 layout(points) in;
-layout(triangle_strip, max_vertices = 16) out;
+layout(triangle_strip, max_vertices = 64) out;
 
 uniform float time      = 0;
 uniform float theta_xy     = 0;
@@ -35,8 +35,6 @@ uniform float x_diff    = 0;
 
 
 in vec4 samples[1];
-
-out vec2 vpos;
 
 void main() {
     vec2 c = samples[0].xy;
@@ -102,16 +100,12 @@ void main() {
         cz.xy = z;
         vec4 pos = vec4(dot(cz, e1), dot(cz, e2), 0, 1);
         gl_Position = pos + vec4(pixel_size_x, pixel_size_y, 0, 0);
-        vpos = vec2(1, 1);
         EmitVertex();
         gl_Position = pos + vec4(-pixel_size_x, pixel_size_y, 0, 0);
-        vpos = vec2(1, -1);
         EmitVertex();
         gl_Position = pos + vec4(pixel_size_x, -pixel_size_y, 0, 0);
-        vpos = vec2(-1, 1);
         EmitVertex();
         gl_Position = pos + vec4(-pixel_size_x, -pixel_size_y, 0, 0);
-        vpos = vec2(-1, -1);
         EmitVertex();
         EndPrimitive();
 
@@ -125,9 +119,8 @@ let fragment_shader = `
 #version 330
 layout(location = 0) out vec4 fragment_output;
 uniform float scaler;
-in vec2 vpos;
 void main() {
-    float v = scaler * 16;
+    float v = scaler * 8;
     fragment_output = vec4(v, v, v, 1);
 }
 `
@@ -185,7 +178,7 @@ export class BuddhabrotRenderer {
         this.vertex_array = new GL.VertexArray();
         let buffer = require("fs").readFileSync("data.bin");
         this.vertices = buffer.length / 4 / 4;
-        // this.vertices /= 4;
+        this.vertices /= 16;
 
         console.log("Number of vertices:", this.vertices);
 

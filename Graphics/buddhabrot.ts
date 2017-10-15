@@ -22,7 +22,7 @@ let t0 = new Date().getTime();
 function render() {
     let t = (new Date().getTime() - t0) / 1000;
     let value = (t / 40) % 1;
-value = 0;
+// value = 0;
     buddhabrot.render({
         theta_xy: value * Math.PI * 2 * 1,
         theta_yz: value * Math.PI * 2 * 2,
