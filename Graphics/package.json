@@ -1,0 +1,21 @@
+{
+  "name": "graphics",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "allofw": "0.0.8",
+    "allofw-utils": "0.0.8-a"
+  },
+  "devDependencies": {
+    "@types/msgpack": "0.0.30",
+    "@types/zmq": "0.0.21"
+  }
+}
